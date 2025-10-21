@@ -162,7 +162,9 @@ export default function Settings() {
                 name="fontFamily"
                 value={fontFamily}
                 label={i18n("font_family")}
-                placeholder="Inter, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+                placeholder={
+                  'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+                }
                 helperText={i18n("font_family_helper")}
                 onChange={handleChange}
               />
