@@ -88,6 +88,7 @@ export default function Settings() {
 
   const {
     uiLang,
+    fontFamily = "",
     minLength,
     maxLength,
     clearCache,
@@ -153,6 +154,18 @@ export default function Settings() {
                   </MenuItem>
                 ))}
               </TextField>
+            </Grid>
+            <Grid item xs={12} sm={12} md={6} lg={3}>
+              <TextField
+                fullWidth
+                size="small"
+                name="fontFamily"
+                value={fontFamily}
+                label={i18n("font_family")}
+                placeholder="Inter, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+                helperText={i18n("font_family_helper")}
+                onChange={handleChange}
+              />
             </Grid>
             <Grid item xs={12} sm={12} md={6} lg={3}>
               <TextField
