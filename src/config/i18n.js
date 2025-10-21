@@ -264,6 +264,16 @@ export const I18N = {
     en: `Interface Language`,
     zh_TW: `介面語言`,
   },
+  font_family: {
+    zh: `界面字体`,
+    en: `Interface Font`,
+    zh_TW: `介面字體`,
+  },
+  font_family_helper: {
+    zh: `留空以使用默认字体，可填写字体族列表，例如 "Inter, system-ui, sans-serif"。`,
+    en: `Leave empty to use the default font. Provide a font-family list, e.g. "Inter, system-ui, sans-serif".`,
+    zh_TW: `留空以使用預設字體，可輸入字型列表，例如「Inter, system-ui, sans-serif」。`,
+  },
   fetch_limit: {
     zh: `最大并发请求数量 (1-100)`,
     en: `Maximum Number Of Concurrent Requests (1-100)`,
