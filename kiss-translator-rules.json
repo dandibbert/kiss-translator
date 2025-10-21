@@ -1,0 +1,34 @@
+[
+  {
+    "rootsSelector": "#rcnt",
+    "pattern": "www.google.com/search"
+  },
+  {
+    "ignoreSelector": ".button, code, footer, form, mark, pre, .mwe-math-element, .mw-editsection",
+    "pattern": "en.wikipedia.org"
+  },
+  {
+    "selector": "p, .titleline, .commtext, .hn-item-title, .hn-comment-text, .hn-story-title",
+    "keepSelector": "code, img, svg, pre, .sitebit",
+    "ignoreSelector": "button, code, footer, form, header, mark, nav, pre, .reply",
+    "autoScan": "false",
+    "pattern": "news.ycombinator.com"
+  },
+  {
+    "selector": "[data-testid='tweetText']",
+    "keepSelector": "img, svg, span:has(a), div:has(a)",
+    "autoScan": "false",
+    "pattern": "twitter.com, https://x.com"
+  },
+  {
+    "rootsSelector": "div#items",
+    "selector": "span.yt-live-chat-text-message-renderer",
+    "autoScan": "false",
+    "pattern": "www.youtube.com/live_chat"
+  },
+  {
+    "rootsSelector": "ytd-page-manager",
+    "ignoreSelector": "aside, button, footer, form, header, pre, mark, nav, #player, #container, .caption-window, .ytp-settings-menu",
+    "pattern": "www.youtube.com"
+  }
+]
