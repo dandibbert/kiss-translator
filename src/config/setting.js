@@ -143,6 +143,7 @@ export const DEFAULT_MOUSE_HOVER_SETTING = {
 export const DEFAULT_SETTING = {
   darkMode: "auto", // 深色模式
   uiLang: "en", // 界面语言
+  fontFamily: "", // 界面字体
   // fetchLimit: DEFAULT_FETCH_LIMIT, // 最大任务数量(移至rule，作废)
   // fetchInterval: DEFAULT_FETCH_INTERVAL, // 任务间隔时间(移至rule，作废)
   minLength: TRANS_MIN_LENGTH,
