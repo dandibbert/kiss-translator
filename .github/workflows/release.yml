@@ -10,10 +10,15 @@ on:
         description: "Tag name to release (for example, v1.2.3)"
         required: true
         type: string
+      ref:
+        description: "Branch, tag, or commit to build from (default: main)"
+        required: false
+        default: main
+        type: string
 
 env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-  RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}
+  RELEASE_TARGET: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.sha }}
 
 jobs:
   build:
@@ -21,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.RELEASE_REF }}
+          ref: ${{ env.RELEASE_TARGET }}
       - uses: pnpm/action-setup@v4
         with:
           version: latest
@@ -41,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.RELEASE_REF }}
+          ref: ${{ env.RELEASE_TARGET }}
       - uses: actions/download-artifact@v4
         with:
           name: build-artifacts
@@ -86,8 +91,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ env.RELEASE_REF }}
+          tag_name: ${{ env.RELEASE_TAG }}
           release_name: ${{ format('Release {0}', env.RELEASE_TAG) }}
+          target_commitish: ${{ env.RELEASE_TARGET }}
           draft: false
           prerelease: false
       - name: Capture created release upload URL
@@ -103,7 +109,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.RELEASE_REF }}
+          ref: ${{ env.RELEASE_TARGET }}
       - uses: actions/download-artifact@v4
         with:
           name: build-artifacts
