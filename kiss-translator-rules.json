@@ -11,8 +11,9 @@
     "pattern": "news.ycombinator.com"
   },
   {
-    "selector": "[data-testid='tweetText']",
-    "keepSelector": "img, svg, span:has(a), div:has(a)",
+    "selector": "[data-testid='tweetText'], [data-testid='twitter-article-title'], .public-DraftStyleDefault-block",
+    "keepSelector": "img, svg, a, span:has(a), div:has(a)",
+    "ignoreSelector": "button, [data-testid='videoPlayer'], [role='group']",
     "autoScan": "false",
     "pattern": "twitter.com, https://x.com"
   },
@@ -25,6 +26,15 @@
   {
     "rootsSelector": "ytd-page-manager",
     "ignoreSelector": "aside, button, footer, form, header, pre, mark, nav, #player, #container, .caption-window, .ytp-settings-menu",
+    "selectStyle": "-webkit-line-clamp: unset; max-height: none; height: auto;",
+    "parentStyle": "-webkit-line-clamp: unset; max-height: none; height: auto;",
+    "grandStyle": "-webkit-line-clamp: unset; max-height: none; height: auto;",
     "pattern": "www.youtube.com"
+  },
+  {
+    "autoScan": "false",
+    "selector": ".text-content, .embedded-text-wrapper",
+    "rootsSelector": ".Transition",
+    "pattern": "web.telegram.org"
   }
 ]
