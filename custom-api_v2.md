@@ -1,4 +1,98 @@
-# 自定义接口示例
+# 自定义接口说明及示例
+
+## 默认接口规范
+
+如果接口的请求数据和返回数据符合以下规范，
+则无需填写 `Request Hook` 或 `Response Hook`。
+
+
+### 非聚合翻译 (v2.0.9)
+
+Request body
+
+```json
+{
+  "text": "hello",    // 需要翻译的文本列表
+  "from":"auto",      // 原文语言
+  "to": "zh-CN"       // 目标语言
+}
+```
+
+Response
+
+```json
+{
+  "text": "你好",    // 译文
+  "src": "en"       // 原文语言
+}
+
+// 或者
+{
+  "text": "你好",    // 译文
+  "from": "en"       // 原文语言
+}
+```
+
+
+### 聚合翻译
+
+Request body
+
+```json
+{
+  "texts": ["hello"], // 需要翻译的文本列表
+  "from":"auto",      // 原文语言
+  "to": "zh-CN"       // 目标语言
+}
+```
+
+Response
+
+```json
+[
+  {
+    "text": "你好",    // 译文
+    "src": "en"       // 原文语言
+  }
+]
+```
+
+v2.0.4版后亦支持以下 Response 格式
+
+```json
+{
+  "translations": [   // 译文列表
+    {
+      "text": "你好",  // 译文
+      "src": "en"     // 原文语言
+    }
+  ]
+}
+```
+
+## Prompt 相关
+
+`Prompt` 可替换占位符：
+
+```js
+`{{from}}`        // 原文语言名称
+`{{to}}`          // 目标语言名称
+`{{fromLang}}`    // 原文语言代码
+`{{toLang}}`      // 目标语言代码
+`{{text}}`        // 原文
+`{{tone}}`        // 风格
+`{{title}}`       // 页面标题
+`{{description}}` // 页面描述
+```
+
+Hook 中 `Prompt` 类型说明：
+
+```js
+`systemPrompt`      // 聚合翻译 System Prompt
+`nobatchPrompt`     // 非聚合翻译 System Prompt
+`nobatchUserPrompt` // 非聚合翻译 User Prompt
+`subtitlePrompt`    // 字幕翻译 System Prompt
+```
 
 ## 谷歌翻译接口
 
@@ -60,9 +154,12 @@ async (args) => {
       {
         role: "user",
         content: JSON.stringify({
-          targetLanguage: args.to,
+          targetLanguage: args.toLang,
           segments: args.texts.map((text, id) => ({ id, text })),
-          glossary: {},
+          title: "", // 可省略
+          description: "", // 可省略
+          glossary: {}, // 可省略
+          tone: "", // 可省略
         }),
       },
     ],
@@ -93,9 +190,12 @@ async (args) => {
       {
         role: "user",
         content: JSON.stringify({
-          targetLanguage: args.to,
+          targetLanguage: args.toLang,
           segments: args.texts.map((text, id) => ({ id, text })),
-          glossary: {},
+          title: "", // 可省略
+          description: "", // 可省略
+          glossary: {}, // 可省略
+          tone: "", // 可省略
         }),
       },
     ],
@@ -197,6 +297,36 @@ async (args) => {
 };
 ```
 
+v2.0.6 版后内置默认 prompt，Response Hook 可以简化为：
+
+```js
+async (args) => {
+  const url = args.url;
+  const method = "POST";
+  const headers = {
+    "Content-type": "application/json",
+    Authorization: `Bearer ${args.key}`,
+  };
+  const body = {
+    model: "tencent/Hunyuan-MT-7B", // 或 args.model
+    messages: [
+      {
+        role: "system",
+        content: args.defaultNobatchPrompt, // 或 args.nobatchPrompt
+      },
+      {
+        role: "user",
+        content: args.defaultNobatchUserPrompt, // 或 args.nobatchUserPrompt
+      },
+    ],
+    temperature: 0,
+    max_tokens: 20480,
+  };
+
+  return { url, body, headers, method };
+};
+```
+
 Response Hook
 
 ```js
@@ -226,6 +356,7 @@ Hook参数里面的语言含义说明：
 ["cs", "Czech - Čeština"],
 ["da", "Danish - Dansk"],
 ["nl", "Dutch - Nederlands"],
+["fa", "Persian - فارسی"],
 ["fi", "Finnish - Suomi"],
 ["fr", "French - Français"],
 ["de", "German - Deutsch"],

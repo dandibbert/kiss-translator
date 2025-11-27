@@ -25,7 +25,9 @@ const SettingContext = createContext({
   reloadSetting: () => {},
 });
 
-export function SettingProvider({ children }) {
+export function SettingProvider({ children, context }) {
+  const isOptionsPage = useMemo(() => context === "options", [context]);
+
   const {
     data: setting,
     isLoading,
@@ -43,6 +45,8 @@ export function SettingProvider({ children }) {
   }, [setting?.darkMode, update]);
 
   useEffect(() => {
+    if (!isOptionsPage) return;
+
     (async () => {
       try {
         logger.setLevel(setting?.logLevel);
@@ -53,7 +57,7 @@ export function SettingProvider({ children }) {
         logger.error("Failed to fetch log level, using default.", error);
       }
     })();
-  }, [setting]);
+  }, [isOptionsPage, setting?.logLevel]);
 
   const updateSetting = useCallback(
     (objOrFn) => {
@@ -75,28 +79,31 @@ export function SettingProvider({ children }) {
 
   const value = useMemo(
     () => ({
+      context,
       setting,
       updateSetting,
       updateChild,
       reloadSetting: reload,
     }),
-    [setting, updateSetting, updateChild, reload]
+    [context, setting, updateSetting, updateChild, reload]
   );
 
   if (isLoading) {
-    return <Loading />;
+    return isOptionsPage ? <Loading /> : null;
   }
 
   if (!setting) {
-    <center>
-      <Alert severity="error" sx={{ maxWidth: 600, margin: "60px auto" }}>
-        <p>数据加载出错，请刷新页面或卸载后重新安装。</p>
-        <p>
-          Data loading error, please refresh the page or uninstall and
-          reinstall.
-        </p>
-      </Alert>
-    </center>;
+    return isOptionsPage ? (
+      <center>
+        <Alert severity="error" sx={{ maxWidth: 600, margin: "60px auto" }}>
+          <p>数据加载出错，请刷新页面或卸载后重新安装。</p>
+          <p>
+            Data loading error, please refresh the page or uninstall and
+            reinstall.
+          </p>
+        </Alert>
+      </center>
+    ) : null;
   }
 
   return (

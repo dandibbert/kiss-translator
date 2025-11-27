@@ -30,8 +30,11 @@ export default function SubtitleSetting() {
     apiSlug,
     segSlug,
     chunkLength,
+    preTrans = 90,
+    throttleTrans = 30,
     toLang,
     isBilingual,
+    skipAd = false,
     windowStyle,
     originStyle,
     translationStyle,
@@ -114,6 +117,32 @@ export default function SubtitleSetting() {
               />
             </Grid>
             <Grid item xs={12} sm={12} md={6} lg={3}>
+              <ValidationInput
+                fullWidth
+                size="small"
+                label={i18n("pre_trans_seconds")}
+                type="number"
+                name="preTrans"
+                value={preTrans}
+                onChange={handleChange}
+                min={10}
+                max={36000}
+              />
+            </Grid>
+            <Grid item xs={12} sm={12} md={6} lg={3}>
+              <ValidationInput
+                fullWidth
+                size="small"
+                label={i18n("throttle_trans_interval")}
+                type="number"
+                name="throttleTrans"
+                value={throttleTrans}
+                onChange={handleChange}
+                min={1}
+                max={3600}
+              />
+            </Grid>
+            <Grid item xs={12} sm={12} md={6} lg={3}>
               <TextField
                 fullWidth
                 select
@@ -139,6 +168,20 @@ export default function SubtitleSetting() {
                 name="isBilingual"
                 value={isBilingual}
                 label={i18n("is_bilingual_view")}
+                onChange={handleChange}
+              >
+                <MenuItem value={true}>{i18n("enable")}</MenuItem>
+                <MenuItem value={false}>{i18n("disable")}</MenuItem>
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={12} md={6} lg={3}>
+              <TextField
+                fullWidth
+                select
+                size="small"
+                name="skipAd"
+                value={skipAd}
+                label={i18n("is_skip_ad")}
                 onChange={handleChange}
               >
                 <MenuItem value={true}>{i18n("enable")}</MenuItem>

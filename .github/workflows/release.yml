@@ -22,17 +22,17 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.RELEASE_TARGET }}
       - uses: pnpm/action-setup@v4
         with:
-          version: latest
+          version: 9.14.4
       - uses: actions/setup-node@v4
         with:
-          node-version: latest
+          node-version: 24
           cache: "pnpm"
       - run: pnpm install
       - run: pnpm build+zip
@@ -42,7 +42,7 @@ jobs:
           path: build
   deploy-web:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,7 +57,7 @@ jobs:
           folder: build/web
   create-release:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       upload_url: ${{ steps.release-info.outputs.upload_url || steps.create-release-info.outputs.upload_url }}
     steps:
@@ -105,7 +105,7 @@ jobs:
     strategy:
       matrix:
         client: ["chrome", "edge", "firefox", "userscript", "thunderbird"]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:

@@ -22,17 +22,24 @@ import {
   API_SPE_TYPES,
   INPUT_PLACE_FROM,
   INPUT_PLACE_TO,
-  // INPUT_PLACE_TEXT,
+  INPUT_PLACE_TEXT,
   INPUT_PLACE_KEY,
   INPUT_PLACE_MODEL,
   DEFAULT_USER_AGENT,
   defaultSystemPrompt,
   defaultSubtitlePrompt,
+  defaultNobatchPrompt,
+  defaultNobatchUserPrompt,
+  INPUT_PLACE_TONE,
+  INPUT_PLACE_TITLE,
+  INPUT_PLACE_DESCRIPTION,
+  INPUT_PLACE_TO_LANG,
+  INPUT_PLACE_FROM_LANG,
 } from "../config";
 import { msAuth } from "../libs/auth";
 import { genDeeplFree } from "./deepl";
 import { genBaidu } from "./baidu";
-import interpreter from "../libs/interpreter";
+import { interpreter } from "../libs/interpreter";
 import { parseJsonObj, extractJson } from "../libs/utils";
 import { kissLog } from "../libs/log";
 import { fetchData } from "../libs/fetch";
@@ -60,42 +67,72 @@ const keyPick = (apiSlug, key = "", cacheMap) => {
   return keys[curIndex];
 };
 
-const genSystemPrompt = ({ systemPrompt, from, to }) =>
+const genSystemPrompt = ({
+  systemPrompt,
+  tone,
+  from,
+  to,
+  fromLang,
+  toLang,
+  texts,
+  docInfo: { title = "", description = "" } = {},
+}) =>
   systemPrompt
+    .replaceAll(INPUT_PLACE_TITLE, title)
+    .replaceAll(INPUT_PLACE_DESCRIPTION, description)
+    .replaceAll(INPUT_PLACE_TONE, tone)
     .replaceAll(INPUT_PLACE_FROM, from)
-    .replaceAll(INPUT_PLACE_TO, to);
+    .replaceAll(INPUT_PLACE_TO, to)
+    .replaceAll(INPUT_PLACE_FROM_LANG, fromLang)
+    .replaceAll(INPUT_PLACE_TO_LANG, toLang)
+    .replaceAll(INPUT_PLACE_TEXT, texts[0]);
 
 const genUserPrompt = ({
-  // userPrompt,
+  nobatchUserPrompt,
+  useBatchFetch,
   tone,
-  glossary = {},
-  // from,
+  glossary,
+  from,
   to,
+  fromLang,
+  toLang,
   texts,
-  docInfo,
+  docInfo: { title = "", description = "" } = {},
 }) => {
-  const prompt = JSON.stringify({
-    targetLanguage: to,
-    title: docInfo.title,
-    description: docInfo.description,
-    segments: texts.map((text, i) => ({ id: i, text })),
-    glossary,
-    tone,
-  });
+  if (useBatchFetch) {
+    const promptObj = {
+      targetLanguage: toLang,
+      segments: texts.map((text, i) => ({ id: i, text })),
+    };
 
-  // if (userPrompt.includes(INPUT_PLACE_TEXT)) {
-  //   return userPrompt
-  //     .replaceAll(INPUT_PLACE_FROM, from)
-  //     .replaceAll(INPUT_PLACE_TO, to)
-  //     .replaceAll(INPUT_PLACE_TEXT, prompt);
-  // }
+    title && (promptObj.title = title);
+    description && (promptObj.description = description);
+    glossary &&
+      Object.keys(glossary).length !== 0 &&
+      (promptObj.glossary = glossary);
+    tone && (promptObj.tone = tone);
 
-  return prompt;
+    return JSON.stringify(promptObj);
+  }
+
+  return nobatchUserPrompt
+    .replaceAll(INPUT_PLACE_TITLE, title)
+    .replaceAll(INPUT_PLACE_DESCRIPTION, description)
+    .replaceAll(INPUT_PLACE_TONE, tone)
+    .replaceAll(INPUT_PLACE_FROM, from)
+    .replaceAll(INPUT_PLACE_TO, to)
+    .replaceAll(INPUT_PLACE_FROM_LANG, fromLang)
+    .replaceAll(INPUT_PLACE_TO_LANG, toLang)
+    .replaceAll(INPUT_PLACE_TEXT, texts[0]);
 };
 
-const parseAIRes = (raw) => {
+const parseAIRes = (raw, useBatchFetch = true) => {
   if (!raw) {
     return [];
+  }
+
+  if (!useBatchFetch) {
+    return [[raw]];
   }
 
   try {
@@ -497,7 +534,7 @@ const genOpenRouter = ({
 };
 
 const genOllama = ({
-  think,
+  // think,
   url,
   key,
   systemPrompt,
@@ -523,7 +560,7 @@ const genOllama = ({
     ],
     temperature,
     max_tokens: maxTokens,
-    think,
+    // think,
     stream: false,
   };
 
@@ -552,8 +589,10 @@ const genCloudflareAI = ({ texts, from, to, url, key }) => {
   return { url, body, headers };
 };
 
-const genCustom = ({ texts, from, to, url, key }) => {
-  const body = { texts, from, to };
+const genCustom = ({ texts, fromLang, toLang, url, key, useBatchFetch }) => {
+  const body = useBatchFetch
+    ? { texts, from: fromLang, to: toLang }
+    : { text: texts[0], from: fromLang, to: toLang };
   const headers = {
     "Content-type": "application/json",
     Authorization: `Bearer ${key}`,
@@ -627,15 +666,21 @@ export const genTransReq = async ({ reqHook, ...args }) => {
     apiSlug,
     key,
     systemPrompt,
-    userPrompt,
+    // userPrompt,
+    nobatchPrompt = defaultNobatchPrompt,
+    nobatchUserPrompt = defaultNobatchUserPrompt,
+    useBatchFetch,
     from,
     to,
+    fromLang,
+    toLang,
     texts,
     docInfo,
     glossary,
     customHeader,
     customBody,
     events,
+    tone,
   } = args;
 
   if (API_SPE_TYPES.mulkeys.has(apiType)) {
@@ -647,15 +692,30 @@ export const genTransReq = async ({ reqHook, ...args }) => {
   }
 
   if (API_SPE_TYPES.ai.has(apiType)) {
-    args.systemPrompt = genSystemPrompt({ systemPrompt, from, to });
-    args.userPrompt = !!events
-      ? JSON.stringify(events)
-      : genUserPrompt({
-          userPrompt,
+    args.systemPrompt = events
+      ? systemPrompt
+      : genSystemPrompt({
+          systemPrompt: useBatchFetch ? systemPrompt : nobatchPrompt,
           from,
           to,
+          fromLang,
+          toLang,
           texts,
           docInfo,
+          tone,
+        });
+    args.userPrompt = events
+      ? JSON.stringify(events)
+      : genUserPrompt({
+          nobatchUserPrompt,
+          useBatchFetch,
+          from,
+          to,
+          fromLang,
+          toLang,
+          texts,
+          docInfo,
+          tone,
           glossary,
         });
   }
@@ -679,22 +739,31 @@ export const genTransReq = async ({ reqHook, ...args }) => {
   // 执行 request hook
   if (reqHook?.trim() && !events) {
     try {
+      const req = {
+        url,
+        body,
+        headers,
+        userMsg,
+        method,
+      };
       interpreter.run(`exports.reqHook = ${reqHook}`);
       const hookResult = await interpreter.exports.reqHook(
-        { ...args, defaultSystemPrompt, defaultSubtitlePrompt },
         {
-          url,
-          body,
-          headers,
-          userMsg,
-          method,
-        }
+          ...args,
+          defaultSystemPrompt,
+          defaultSubtitlePrompt,
+          defaultNobatchPrompt,
+          defaultNobatchUserPrompt,
+          req,
+        },
+        req
       );
       if (hookResult && hookResult.url) {
         return genInit(hookResult);
       }
     } catch (err) {
       kissLog("run req hook", err);
+      throw new Error(`Request hook error: ${err.message}`);
     }
   }
 
@@ -717,10 +786,11 @@ export const parseTransRes = async (
     toLang,
     langMap,
     resHook,
-    thinkIgnore,
+    // thinkIgnore,
     history,
     userMsg,
     apiType,
+    useBatchFetch,
   }
 ) => {
   // 执行 response hook
@@ -745,9 +815,12 @@ export const parseTransRes = async (
           history.add(userMsg, hookResult.modelMsg);
         }
         return hookResult.translations;
+      } else if (Array.isArray(hookResult)) {
+        return hookResult;
       }
     } catch (err) {
       kissLog("run res hook", err);
+      throw new Error(`Response hook error: ${err.message}`);
     }
   }
 
@@ -811,13 +884,13 @@ export const parseTransRes = async (
           content: modelMsg.content,
         });
       }
-      return parseAIRes(res?.choices?.[0]?.message?.content ?? "");
+      return parseAIRes(modelMsg?.content, useBatchFetch);
     case OPT_TRANS_GEMINI:
       modelMsg = res?.candidates?.[0]?.content;
       if (history && userMsg && modelMsg) {
         history.add(userMsg, modelMsg);
       }
-      return parseAIRes(res?.candidates?.[0]?.content?.parts?.[0]?.text ?? "");
+      return parseAIRes(modelMsg?.parts?.[0]?.text ?? "", useBatchFetch);
     case OPT_TRANS_CLAUDE:
       modelMsg = { role: res?.role, content: res?.content?.text };
       if (history && userMsg && modelMsg) {
@@ -826,18 +899,18 @@ export const parseTransRes = async (
           content: modelMsg.content,
         });
       }
-      return parseAIRes(res?.content?.[0]?.text ?? "");
+      return parseAIRes(res?.content?.[0]?.text ?? "", useBatchFetch);
     case OPT_TRANS_CLOUDFLAREAI:
       return [[res?.result?.translated_text]];
     case OPT_TRANS_OLLAMA:
       modelMsg = res?.choices?.[0]?.message;
 
-      const deepModels = thinkIgnore
-        .split(",")
-        .filter((model) => model?.trim());
-      if (deepModels.some((model) => res?.model?.startsWith(model))) {
-        modelMsg?.content.replace(/<think>[\s\S]*<\/think>/i, "");
-      }
+      // const deepModels = thinkIgnore
+      //   .split(",")
+      //   .filter((model) => model?.trim());
+      // if (deepModels.some((model) => res?.model?.startsWith(model))) {
+      //   modelMsg?.content.replace(/<think>[\s\S]*<\/think>/i, "");
+      // }
 
       if (history && userMsg && modelMsg) {
         history.add(userMsg, {
@@ -845,9 +918,12 @@ export const parseTransRes = async (
           content: modelMsg.content,
         });
       }
-      return parseAIRes(modelMsg?.content);
+      return parseAIRes(modelMsg?.content, useBatchFetch);
     case OPT_TRANS_CUSTOMIZE:
-      return res?.map((item) => [item.text, item.src]);
+      if (useBatchFetch) {
+        return (res?.translations ?? res)?.map((item) => [item.text, item.src]);
+      }
+      return [[res.text, res.src || res.from]];
     default:
   }
 

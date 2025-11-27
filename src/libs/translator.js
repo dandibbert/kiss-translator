@@ -1,9 +1,6 @@
 import {
-  APP_NAME,
   APP_LCNAME,
   APP_CONSTS,
-  MSG_INJECT_JS,
-  MSG_INJECT_CSS,
   OPT_STYLE_FUZZY,
   GLOBLA_RULE,
   DEFAULT_SETTING,
@@ -15,15 +12,12 @@ import {
   OPT_SPLIT_PARAGRAPH_PUNCTUATION,
   OPT_SPLIT_PARAGRAPH_DISABLE,
   OPT_SPLIT_PARAGRAPH_TEXTLENGTH,
+  MSG_INJECT_CSS,
 } from "../config";
-import interpreter from "./interpreter";
-import ShadowRootMonitor from "./shadowRootMonitor";
+import { interpreter } from "./interpreter";
 import { clearFetchPool } from "./pool";
 import { debounce, scheduleIdle, genEventName, truncateWords } from "./utils";
 import { apiTranslate } from "../apis";
-import { sendBgMsg } from "./msg";
-import { isExt } from "./client";
-import { injectInlineJs, injectInternalCss } from "./injector";
 import { kissLog } from "./log";
 import { clearAllBatchQueue } from "./batchQueue";
 import { genTextClass } from "./style";
@@ -31,6 +25,10 @@ import { createLoadingSVG } from "./svg";
 import { shortcutRegister } from "./shortcut";
 import { tryDetectLang } from "./detect";
 import { trustedTypesHelper } from "./trustedTypes";
+import { injectJs, INJECTOR } from "../injectors";
+import { injectInternalCss } from "./injector";
+import { isExt } from "./client";
+import { sendBgMsg } from "./msg";
 
 /**
  * @class Translator
@@ -77,7 +75,7 @@ export class Translator {
       "VIDEO",
     ]),
     INLINE: new Set([
-      "A",
+      // "A",
       "ABBR",
       "ACRONYM",
       "B",
@@ -106,7 +104,7 @@ export class Translator {
       "SCRIPT",
       "SELECT",
       "SMALL",
-      "SPAN",
+      // "SPAN",
       "STRONG",
       "SUB",
       "SUP",
@@ -154,7 +152,7 @@ export class Translator {
 
   // 译文相关class
   static KISS_CLASS = {
-    warpper: `${APP_LCNAME}-wrapper notranslate`,
+    warpper: `${APP_LCNAME}-wrapper`,
     inner: `${APP_LCNAME}-inner`,
     term: `${APP_LCNAME}-term`,
     br: `${APP_LCNAME}-br`,
@@ -206,10 +204,16 @@ export class Translator {
 
     // 14. 包含常见扩展名的文件名 (例如: document.pdf, image.jpeg)
     /^[^\s\\/:]+?\.[a-zA-Z0-9]{2,5}$/,
+
+    // todo: 数字和特殊字符组成的字符串
   ];
 
   static DEFAULT_OPTIONS = DEFAULT_SETTING; // 默认配置
   static DEFAULT_RULE = GLOBLA_RULE; // 默认规则
+
+  static isElement(el) {
+    return el instanceof Element;
+  }
 
   static isElementOrFragment(el) {
     return el instanceof Element || el instanceof DocumentFragment;
@@ -219,8 +223,9 @@ export class Translator {
   static isBlockNode(el) {
     if (!Translator.isElementOrFragment(el)) return false;
 
-    if (Translator.TAGS.INLINE.has(el.nodeName)) return false;
-    if (Translator.TAGS.BLOCK.has(el.nodeName)) return true;
+    if (Translator.TAGS.INLINE.has(el.nodeName?.toUpperCase())) return false;
+    if (Translator.TAGS.BLOCK.has(el.nodeName?.toUpperCase())) return true;
+    if (el.attributes?.display?.value?.includes("inline")) return false;
 
     if (Translator.displayCache.has(el)) {
       return Translator.displayCache.get(el);
@@ -231,11 +236,22 @@ export class Translator {
     return isBlock;
   }
 
+  // 判断是否包含块级子元素
+  static hasBlockNode(el) {
+    if (!Translator.isElementOrFragment(el)) return false;
+    for (const child of el.childNodes) {
+      if (Translator.isBlockNode(child)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // 判断是否直接包含非空文本节点
   static hasTextNode(el) {
     if (!Translator.isElementOrFragment(el)) return false;
-    for (const node of el.childNodes) {
-      if (node.nodeType === Node.TEXT_NODE && /\S/.test(node.nodeValue)) {
+    for (const child of el.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE && /\S/.test(child.nodeValue)) {
         return true;
       }
     }
@@ -248,18 +264,22 @@ export class Translator {
   }
 
   // 内置忽略元素
-  static BUILTIN_IGNORE_SELECTOR = `abbr, address, area, audio, br, canvas, code,
-  data, datalist, dfn, embed, head, iframe, img, input, kbd, noscript, map, 
-  object, option, output, param, picture, progress,
-  samp, select, script, style, sub, sup, svg, track, time, textarea, template, 
-  var, video, wbr, .notranslate, [contenteditable], [translate='no'], 
-  ${APP_LCNAME}, #${APP_CONSTS.fabID}, #${APP_CONSTS.boxID}, 
-  .${APP_CONSTS.fabID}_warpper, .${APP_CONSTS.boxID}_warpper`;
+  static KISS_IGNORE_SELECTOR = `.${Translator.KISS_CLASS.warpper}, .kiss-caption-container, .kiss-subtitle-controls
+  #${APP_CONSTS.fabID}, .${APP_CONSTS.fabID}_warpper,
+  #${APP_CONSTS.boxID}, .${APP_CONSTS.boxID}_warpper,
+  #${APP_CONSTS.popupID}, .${APP_CONSTS.popupID}_warpper`;
+
+  static BUILTIN_IGNORE_SELECTOR = `address, area, audio, br, canvas, 
+  data, datalist, embed, head, iframe, input, noscript, map, 
+  object, option, param, picture, progress, 
+  select, script, style, track, textarea, template, 
+  video, wbr, .notranslate, [contenteditable='true'], [translate='no']`;
 
   #setting; // 设置选项
   #rule; // 规则
   #isInitialized = false; // 初始化状态
   #isJsInjected = false; // 注入用户JS
+  #isShadowRootJsInjected = false; //
   #mouseHoverEnabled = false; // 鼠标悬停翻译
   #enabled = false; // 全局默认状态
   #runId = 0; // 用于中止过期的异步请求
@@ -267,7 +287,7 @@ export class Translator {
   #combinedTermsRegex; // 专业术语正则表达式
   #combinedSkipsRegex; // 跳过文本正则表达式
   #placeholderRegex; // 恢复htnml正则表达式
-  #translationTagName = APP_NAME; // 翻译容器的标签名
+  #translationTagName = APP_LCNAME; // 翻译容器的标签名
   #eventName = ""; // 通信事件名称
   #docInfo = {}; // 网页信息
   #glossary = {}; // AI词典
@@ -287,18 +307,28 @@ export class Translator {
   #hoveredNode = null; // 存储当前悬停的可翻译节点
   #boundMouseMoveHandler; // 鼠标事件
   #boundKeyDownHandler; // 键盘事件
+  #windowMessageHandler = null;
+
+  #debouncedFindShadowRoot = null;
 
   #io; // IntersectionObserver
   #mo; // MutationObserver
   #dmm; // DebounceMouseMover
-  #srm; // ShadowRootMonitor
 
   #rescanQueue = new Set(); // “脏容器”队列
   #isQueueProcessing = false; // 队列处理状态标志
 
   // 忽略元素
   get #ignoreSelector() {
-    return `${Translator.BUILTIN_IGNORE_SELECTOR}, ${this.#rule.ignoreSelector}`;
+    if (this.#rule.isPlainText) {
+      return Translator.KISS_IGNORE_SELECTOR;
+    }
+
+    if (this.#rule.autoScan === "false") {
+      return `${Translator.KISS_IGNORE_SELECTOR}, ${this.#rule.ignoreSelector}`;
+    }
+
+    return `${Translator.KISS_IGNORE_SELECTOR}, ${Translator.BUILTIN_IGNORE_SELECTOR}, ${this.#rule.ignoreSelector}`;
   }
 
   // 接口参数
@@ -325,7 +355,7 @@ export class Translator {
 
   constructor({ rule = {}, setting = {}, favWords = [] }) {
     this.#setting = { ...Translator.DEFAULT_OPTIONS, ...setting };
-    this.#rule = { ...Translator.DEFAULT_RULE, ...rule };
+    this.#rule = { ...Translator.DEFAULT_RULE, ...rule, isPlainText: false };
     this.#favWords = favWords;
     this.#apisMap = new Map(
       this.#setting.transApis.map((api) => [api.apiSlug, api])
@@ -333,7 +363,7 @@ export class Translator {
 
     this.#eventName = genEventName();
     this.#docInfo = {
-      title: document.title,
+      title: truncateWords(document.title),
       description: this.#getDocDescription(),
     };
     this.#combinedSkipsRegex = new RegExp(
@@ -350,12 +380,12 @@ export class Translator {
     this.#io = this.#createIntersectionObserver();
     this.#mo = this.#createMutationObserver();
     this.#dmm = this.#createDebounceMouseMover();
-    this.#srm = this.#createShadowRootMonitor();
 
-    // 监控shadowroot
-    if (this.#rule.hasShadowroot === "true") {
-      this.#srm.start();
-    }
+    this.#windowMessageHandler = this.#handleWindowMessage.bind(this);
+    this.#debouncedFindShadowRoot = debounce(
+      this.#findAndObserveShadowRoot.bind(this),
+      300
+    );
 
     // 鼠标悬停翻译
     if (this.#setting.mouseHoverSetting.useMouseHover) {
@@ -385,6 +415,19 @@ export class Translator {
     // 注入JS/CSS
     this.#initInjector();
 
+    // 纯文本预处理
+    if (this.#rule.isPlainText) {
+      document
+        .querySelectorAll("pre")
+        .forEach(
+          (pre) =>
+            (pre.innerHTML = pre.innerHTML?.replace(
+              /(?:\r\n|\r|\n)/g,
+              "<br />"
+            ))
+        );
+    }
+
     // 查找根节点并扫描
     document
       .querySelectorAll(this.#rule.rootsSelector || "body")
@@ -392,15 +435,41 @@ export class Translator {
         this.#startObserveRoot(root);
       });
 
-    // 查找现有的所有shadowroot
     if (this.#rule.hasShadowroot === "true") {
-      try {
-        this.#findAllShadowRoots().forEach((shadowRoot) => {
-          this.#startObserveShadowRoot(shadowRoot);
-        });
-      } catch (err) {
-        kissLog("findAllShadowRoots", err);
-      }
+      this.#attachShadowRootListener();
+      this.#findAndObserveShadowRoot();
+    }
+  }
+
+  #handleWindowMessage(event) {
+    if (event.data?.type === "KISS_SHADOW_ROOT_CREATED") {
+      this.#debouncedFindShadowRoot();
+    }
+  }
+
+  #attachShadowRootListener() {
+    if (!this.#isShadowRootJsInjected) {
+      const id = "kiss-translator-inject-shadowroot-js";
+      injectJs(INJECTOR.shadowroot, id);
+
+      this.#isShadowRootJsInjected = true;
+    }
+
+    window.addEventListener("message", this.#windowMessageHandler);
+  }
+
+  #removeShadowRootListener() {
+    window.removeEventListener("message", this.#windowMessageHandler);
+  }
+
+  // 查找现有的所有shadowroot
+  #findAndObserveShadowRoot() {
+    try {
+      this.#findAllShadowRoots().forEach((shadowRoot) => {
+        this.#startObserveShadowRoot(shadowRoot);
+      });
+    } catch (err) {
+      kissLog("findAllShadowRoots", err);
     }
   }
 
@@ -416,7 +485,7 @@ export class Translator {
 
   // 创建样式
   #createTextStyles() {
-    const [textClass, textStyles] = genTextClass({ ...this.#rule });
+    const [textClass, textStyles] = genTextClass(this.#setting.customStyles);
     const textSheet = new CSSStyleSheet();
     textSheet.replaceSync(textStyles);
     this.#textClass = textClass;
@@ -502,11 +571,13 @@ export class Translator {
 
   // 监控翻译单元的可见性
   #createIntersectionObserver() {
+    const { transInterval, rootMargin = 500 } = this.#setting;
+
     const pending = new Set();
     const flush = debounce(() => {
       pending.forEach((node) => this.#performSyncNode(node));
       pending.clear();
-    }, this.#setting.transInterval);
+    }, transInterval);
 
     return new IntersectionObserver(
       (entries) => {
@@ -520,7 +591,7 @@ export class Translator {
           }
         });
       },
-      { threshold: 0.01 }
+      { threshold: 0.01, rootMargin: `${rootMargin}px 0px ${rootMargin}px 0px` }
     );
   }
 
@@ -528,33 +599,36 @@ export class Translator {
   #createMutationObserver() {
     return new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        if (this.#skipMoNodes.has(mutation.target)) return;
-
         if (
-          mutation.type === "characterData" &&
-          mutation.oldValue !== mutation.target.nodeValue
+          this.#skipMoNodes.has(mutation.target) ||
+          mutation.nextSibling?.tagName?.toLowerCase() ===
+            this.#translationTagName
         ) {
-          this.#queueForRescan(mutation.target.parentElement);
-        } else if (mutation.type === "childList") {
-          if (mutation.nextSibling?.tagName === this.#translationTagName) {
-            // 恢复原文时插入元素，忽略
-            continue;
-          }
+          continue;
+        }
 
+        if (mutation.type === "characterData") {
+          if (
+            mutation.oldValue !== mutation.target.nodeValue &&
+            !this.#combinedSkipsRegex.test(mutation.target.nodeValue)
+          ) {
+            this.#queueForRescan(mutation.target.parentElement);
+          }
+        } else if (mutation.type === "childList") {
           let nodes = new Set();
           let hasText = false;
           mutation.addedNodes.forEach((node) => {
-            if (this.#skipMoNodes.has(node)) return;
+            if (
+              this.#skipMoNodes.has(node) ||
+              node.nodeName?.toLowerCase() === this.#translationTagName
+            ) {
+              return;
+            }
 
-            if (/\S/.test(node.nodeValue)) {
-              if (node.nodeType === Node.TEXT_NODE) {
-                hasText = true;
-              } else if (
-                Translator.isElementOrFragment(node) &&
-                node.nodeName !== this.#translationTagName
-              ) {
-                nodes.add(node);
-              }
+            if (node.nodeType === Node.TEXT_NODE) {
+              hasText = true;
+            } else if (Translator.isElementOrFragment(node)) {
+              nodes.add(node);
             }
           });
           if (hasText) {
@@ -586,16 +660,9 @@ export class Translator {
         this.#init();
       }
       if (mouseHoverKey.length === 0 && foundNode) {
-        this.#processNode(foundNode);
+        this.#toggleTargetNode(foundNode);
       }
     }, 100);
-  }
-
-  // 创建shadowroot的回调
-  #createShadowRootMonitor() {
-    return new ShadowRootMonitor((shadowRoot) => {
-      this.#startObserveShadowRoot(shadowRoot);
-    });
   }
 
   // 跟踪鼠标下的可翻译节点
@@ -727,6 +794,9 @@ export class Translator {
 
   // 开始/重新监控节点
   #startObserveNode(node) {
+    // todo: DocumentFragment 无法被 this.#io.observe
+    if (!Translator.isElement(node)) return;
+
     if (this.#rule.highlightWords === OPT_HIGHLIGHT_WORDS_BEFORETRANS) {
       this.#highlightWordsDeeply(node);
     }
@@ -772,6 +842,7 @@ export class Translator {
   #scanNode(rootNode) {
     if (
       !Translator.isElementOrFragment(rootNode) ||
+      // rootNode.matches?.(this.#rule.keepSelector) ||
       rootNode.matches?.(this.#ignoreSelector)
     ) {
       return;
@@ -783,13 +854,24 @@ export class Translator {
     }
 
     const hasText = Translator.hasTextNode(rootNode);
-    if (hasText) {
+
+    if (!hasText && rootNode.children.length === 1) {
+      this.#scanNode(rootNode.children[0]);
+      return;
+    }
+
+    const hasBlock = Translator.hasBlockNode(rootNode);
+
+    if (hasText || !hasBlock) {
       this.#startObserveNode(rootNode);
     }
 
-    for (const child of rootNode.children) {
-      if (!hasText || Translator.isBlockNode(child)) {
-        this.#scanNode(child);
+    if (hasBlock) {
+      for (const child of rootNode.children) {
+        const isBlock = Translator.isBlockNode(child);
+        if (!hasText || isBlock) {
+          this.#scanNode(child);
+        }
       }
     }
   }
@@ -974,7 +1056,10 @@ export class Translator {
       textLength += node.textContent.length;
 
       const isSentenceEnd = sentenceEndRegexForTest.test(node.textContent);
-      if (!isSentenceEnd || node.nextSibling?.nodeName === "BR") {
+      if (
+        !isSentenceEnd ||
+        node.nextSibling?.nodeName?.toUpperCase() === "BR"
+      ) {
         return;
       }
 
@@ -1027,8 +1112,9 @@ export class Translator {
     if (node.matches(this.#rule.keepSelector)) return false;
 
     if (
-      Translator.TAGS.BREAK_LINE.has(node.nodeName) ||
-      node.nodeName === this.#translationTagName
+      Translator.TAGS.BREAK_LINE.has(node.nodeName?.toUpperCase()) ||
+      node.matches?.(this.#ignoreSelector) ||
+      node.nodeName?.toLowerCase() === this.#translationTagName
     ) {
       return true;
     }
@@ -1087,10 +1173,10 @@ export class Translator {
     const {
       transTag,
       textStyle,
-      transStartHook,
       transEndHook,
       transOnly,
       termsStyle,
+      textExtStyle,
       selectStyle,
       parentStyle,
       grandStyle,
@@ -1106,30 +1192,15 @@ export class Translator {
     const parentNode = hostNode.parentElement;
     const hideOrigin = transOnly === "true";
 
-    // 翻译开始钩子函数
-    if (transStartHook?.trim()) {
-      try {
-        interpreter.run(`exports.transStartHook = ${transStartHook}`);
-        interpreter.exports.transStartHook({
-          hostNode,
-          parentNode,
-          nodes,
-        });
-      } catch (err) {
-        kissLog("transStartHook", err);
-      }
-    }
-
     try {
       const [processedString, placeholderMap] = this.#serializeForTranslation(
         nodes,
         termsStyle
       );
-      // console.log("processedString", processedString);
       if (this.#isInvalidText(processedString)) return;
 
       const wrapper = document.createElement(this.#translationTagName);
-      wrapper.className = Translator.KISS_CLASS.warpper;
+      wrapper.className = `${Translator.KISS_CLASS.warpper} notranslate`;
 
       if (processedString.length > newlineLength) {
         const br = document.createElement("br");
@@ -1138,16 +1209,17 @@ export class Translator {
       }
 
       const inner = document.createElement(transTag);
-      inner.className = `${Translator.KISS_CLASS.inner} ${this.#textClass[textStyle]}`;
+      inner.className = `${Translator.KISS_CLASS.inner} ${this.#textClass[textStyle] || ""}`;
+      if (textExtStyle?.trim()) {
+        inner.style.cssText = textExtStyle; // 附加内联样式
+      }
       inner.appendChild(createLoadingSVG());
       wrapper.appendChild(inner);
       nodes[nodes.length - 1].after(wrapper);
 
       const currentRunId = this.#runId;
-      const [translatedText, isSameLang] = await this.#translateFetch(
-        processedString,
-        deLang
-      );
+      const { trText: translatedText, isSame: isSameLang } =
+        await this.#translateFetch(processedString, deLang);
       if (this.#runId !== currentRunId) {
         throw new Error("Request terminated");
       }
@@ -1240,10 +1312,7 @@ export class Translator {
       }
 
       // 文本节点
-      if (
-        this.#rule.hasRichText === "false" ||
-        node.nodeType === Node.TEXT_NODE
-      ) {
+      if (node.nodeType === Node.TEXT_NODE) {
         let text = node.textContent;
 
         // 专业术语替换
@@ -1269,11 +1338,16 @@ export class Translator {
       // 元素节点
       if (node.nodeType === Node.ELEMENT_NODE) {
         if (
-          Translator.TAGS.REPLACE.has(node.tagName) ||
+          (this.#rule.hasRichText === "true" &&
+            Translator.TAGS.REPLACE.has(node.tagName)) ||
           node.matches(this.#rule.keepSelector) ||
+          // node.matches(this.#ignoreSelector) ||
           !node.textContent.trim()
         ) {
-          if (node.tagName === "IMG" || node.tagName === "SVG") {
+          if (
+            node.tagName?.toUpperCase() === "IMG" ||
+            node.tagName?.toUpperCase() === "SVG"
+          ) {
             node.style.width = `${node.offsetWidth}px`;
             node.style.height = `${node.offsetHeight}px`;
           }
@@ -1285,7 +1359,10 @@ export class Translator {
           innerContent += traverse(child);
         });
 
-        if (Translator.TAGS.WARP.has(node.tagName)) {
+        if (
+          this.#rule.hasRichText === "true" &&
+          Translator.TAGS.WARP.has(node.tagName?.toUpperCase())
+        ) {
           wrapCounter++;
           const startPlaceholder = `<${this.#placeholder.tagName}${wrapCounter}>`;
           const endPlaceholder = `</${this.#placeholder.tagName}${wrapCounter}>`;
@@ -1331,21 +1408,46 @@ export class Translator {
 
   // 发起翻译请求
   #translateFetch(text, deLang = "") {
-    const { fromLang, toLang } = this.#rule;
+    const { toLang, transStartHook } = this.#rule;
+    const fromLang = deLang || this.#rule.fromLang;
+    const apiSetting = { ...this.#apiSetting };
+    const docInfo = { ...this.#docInfo };
+    const glossary = { ...this.#glossary };
+    const apisMap = this.#apisMap;
 
-    return apiTranslate({
+    const args = {
       text,
-      fromLang: deLang || fromLang,
+      fromLang,
       toLang,
-      apiSetting: this.#apiSetting,
-      docInfo: this.#docInfo,
-      glossary: this.#glossary,
-    });
+      apiSetting,
+      docInfo,
+      glossary,
+    };
+
+    // 翻译开始钩子函数
+    if (transStartHook?.trim()) {
+      try {
+        interpreter.run(`exports.transStartHook = ${transStartHook}`);
+        const hookResult = interpreter.exports.transStartHook({
+          ...args,
+          apisMap,
+        });
+        if (hookResult) {
+          Object.assign(args, hookResult);
+        }
+      } catch (err) {
+        kissLog("transStartHook", err);
+      }
+    }
+
+    return apiTranslate(args);
   }
 
   // 查找指定节点下所有译文节点
   #findTranslationWrappers(parentNode) {
-    return parentNode.querySelectorAll(`:scope > ${APP_LCNAME}`);
+    return parentNode.querySelectorAll(
+      `:scope > .${Translator.KISS_CLASS.warpper}`
+    );
   }
 
   // 清理所有插入的译文dom
@@ -1356,7 +1458,7 @@ export class Translator {
   // 清理节点下面所有译文dom
   #cleanupAllTranslations(root) {
     root
-      .querySelectorAll(APP_LCNAME)
+      .querySelectorAll(`.${Translator.KISS_CLASS.warpper}`)
       .forEach((el) => this.#removeTranslationElement(el));
   }
 
@@ -1489,6 +1591,8 @@ export class Translator {
 
   // 停止监听，重置参数
   #resetOptions() {
+    this.#removeShadowRootListener();
+
     this.#io.disconnect();
     this.#mo.disconnect();
     this.#viewNodes.clear();
@@ -1534,14 +1638,42 @@ export class Translator {
     this.#isJsInjected = true;
 
     try {
-      const { injectJs, injectCss } = this.#rule;
+      // const { injectJs, injectCss } = this.#rule;
+      // if (isExt) {
+      //   injectJs && sendBgMsg(MSG_INJECT_JS, injectJs);
+      //   injectCss && sendBgMsg(MSG_INJECT_CSS, injectCss);
+      // } else {
+      //   injectJs &&
+      //     injectInlineJs(injectJs, "kiss-translator-userinit-injector");
+      //   injectCss && injectInternalCss(injectCss);
+      // }
+
+      const { injectJs, injectCss, toLang } = this.#rule;
+
       if (isExt) {
-        injectJs && sendBgMsg(MSG_INJECT_JS, injectJs);
         injectCss && sendBgMsg(MSG_INJECT_CSS, injectCss);
       } else {
-        injectJs &&
-          injectInlineJs(injectJs, "kiss-translator-userinit-injector");
         injectCss && injectInternalCss(injectCss);
+      }
+
+      if (injectJs?.trim()) {
+        const apiSetting = { ...this.#apiSetting };
+        const docInfo = { ...this.#docInfo };
+        const glossary = { ...this.#glossary };
+        const apisMap = this.#apisMap;
+        const apiDectect = tryDetectLang;
+        interpreter.import({
+          KT: {
+            apiTranslate,
+            apiDectect,
+            apiSetting,
+            apisMap,
+            toLang,
+            docInfo,
+            glossary,
+          },
+        });
+        interpreter.run(injectJs);
       }
     } catch (err) {
       kissLog("inject js", err);
@@ -1587,13 +1719,13 @@ export class Translator {
   // 翻译页面标题
   async #translateTitle() {
     const title = document.title;
-    this.#docInfo.title = title;
+    this.#docInfo.title = truncateWords(title);
     if (!title) return;
 
     try {
       const deLang = await tryDetectLang(title);
-      const [translatedTitle] = await this.#translateFetch(title, deLang);
-      document.title = translatedTitle || title;
+      const { trText } = await this.#translateFetch(title, deLang);
+      document.title = trText || title;
     } catch (err) {
       kissLog("tanslate title", err);
     }
@@ -1659,7 +1791,6 @@ export class Translator {
   stop() {
     this.disable();
     this.#resetOptions();
-    this.#srm.stop();
     this.#disableMouseHover();
     this.#removeInjector();
     this.#isInitialized = false;
@@ -1675,7 +1806,11 @@ export class Translator {
         this.#rule[key] !== newRule[key]
       ) {
         this.#rule[key] = newRule[key];
-        if (key === "autoScan" || key === "hasShadowroot") {
+        if (
+          key === "autoScan" ||
+          key === "hasShadowroot" ||
+          key === "isPlainText"
+        ) {
           needsRescan = true;
         } else {
           hasChanged = true;

@@ -28,7 +28,7 @@ import { logger } from "./log";
 export default class TranslatorManager {
   #clearShortcuts = [];
   #menuCommandIds = [];
-  #clearTouchListener = null;
+  #clearTouchListeners = [];
   #isActive = false;
   #isUserscript;
   #isIframe;
@@ -54,15 +54,15 @@ export default class TranslatorManager {
       isIframe,
     });
 
+    this._transboxManager = new TransboxManager(setting);
+
     if (!isIframe) {
-      this._transboxManager = new TransboxManager(setting);
       this._inputTranslator = new InputTranslator(setting);
       this._popupManager = new PopupManager({
         translator: this._translator,
         processActions: this.#processActions.bind(this),
       });
       this._fabManager = new FabManager({
-        translator: this._translator,
         processActions: this.#processActions.bind(this),
         fabConfig,
       });
@@ -110,15 +110,13 @@ export default class TranslatorManager {
     this.#clearShortcuts = [];
 
     // 触屏
-    if (this.#clearTouchListener) {
-      this.#clearTouchListener();
-      this.#clearTouchListener = null;
-    }
+    this.#clearTouchListeners.forEach((clear) => clear());
+    this.#clearTouchListeners = [];
 
     // 油猴菜单
     if (globalThis.GM && this.#menuCommandIds.length > 0) {
       this.#menuCommandIds.forEach((id) =>
-        globalThis.GM.unregisterMenuCommand(id)
+        globalThis.GM.unregisterMenuCommand?.(id)
       );
       this.#menuCommandIds = [];
     }
@@ -139,14 +137,17 @@ export default class TranslatorManager {
       window.addEventListener("message", this.#windowMessageHandler);
     } else {
       browser.runtime.onMessage.addListener(this.#browserMessageHandler);
+      if (this.#isIframe) {
+        window.addEventListener("message", this.#windowMessageHandler);
+      }
     }
   }
 
   #setupTouchOperations() {
     if (this.#isIframe) return;
 
-    const { touchTranslate = 2 } = this._translator.setting;
-    if (touchTranslate === 0) {
+    const { touchModes = [2] } = this._translator.setting;
+    if (touchModes.length === 0) {
       return;
     }
 
@@ -154,35 +155,31 @@ export default class TranslatorManager {
       this.#processActions({ action: MSG_TRANS_TOGGLE });
     };
 
-    switch (touchTranslate) {
-      case 2:
-      case 3:
-      case 4:
-        this.#clearTouchListener = touchTapListener(handleTap, {
-          taps: 1,
-          fingers: touchTranslate,
-        });
-        break;
-      case 5:
-        this.#clearTouchListener = touchTapListener(handleTap, {
-          taps: 2,
-          fingers: 1,
-        });
-        break;
-      case 6:
-        this.#clearTouchListener = touchTapListener(handleTap, {
-          taps: 3,
-          fingers: 1,
-        });
-        break;
-      case 7:
-        this.#clearTouchListener = touchTapListener(handleTap, {
-          taps: 2,
-          fingers: 2,
-        });
-        break;
-      default:
-    }
+    const handleListener = (mode) => {
+      let options = null;
+      switch (mode) {
+        case 2:
+        case 3:
+        case 4:
+          options = { taps: 1, fingers: mode };
+          break;
+        case 5:
+          options = { taps: 2, fingers: 1 };
+          break;
+        case 6:
+          options = { taps: 3, fingers: 1 };
+          break;
+        case 7:
+          options = { taps: 2, fingers: 2 };
+          break;
+        default:
+      }
+      if (options) {
+        this.#clearTouchListeners.push(touchTapListener(handleTap, options));
+      }
+    };
+
+    touchModes.forEach((mode) => handleListener(mode));
   }
 
   #handleWindowMessage(event) {
@@ -190,7 +187,7 @@ export default class TranslatorManager {
   }
 
   #handleBrowserMessage(message, sender, sendResponse) {
-    const result = this.#processActions(message);
+    const result = this.#processActions(message, true);
     const response = result || {
       rule: this._translator.rule,
       setting: this._translator.setting,
@@ -248,10 +245,14 @@ export default class TranslatorManager {
     ];
   }
 
-  #processActions({ action, args } = {}) {
-    if (this.#isUserscript) {
-      sendIframeMsg(action);
+  #processActions({ action, args } = {}, fromExt = false) {
+    if (!action) return;
+
+    if (!fromExt) {
+      sendIframeMsg(action, args);
     }
+
+    logger.debug("process action:", action, args);
 
     switch (action) {
       case MSG_TRANS_TOGGLE:

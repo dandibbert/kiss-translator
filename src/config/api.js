@@ -9,7 +9,12 @@ export const DEFAULT_CONTEXT_SIZE = 3; // 上下文会话数量
 export const INPUT_PLACE_URL = "{{url}}"; // 占位符
 export const INPUT_PLACE_FROM = "{{from}}"; // 占位符
 export const INPUT_PLACE_TO = "{{to}}"; // 占位符
+export const INPUT_PLACE_FROM_LANG = "{{fromLang}}"; // 占位符
+export const INPUT_PLACE_TO_LANG = "{{toLang}}"; // 占位符
 export const INPUT_PLACE_TEXT = "{{text}}"; // 占位符
+export const INPUT_PLACE_TONE = "{{tone}}"; // 占位符
+export const INPUT_PLACE_TITLE = "{{title}}"; // 占位符
+export const INPUT_PLACE_DESCRIPTION = "{{description}}"; // 占位符
 export const INPUT_PLACE_KEY = "{{key}}"; // 占位符
 export const INPUT_PLACE_MODEL = "{{model}}"; // 占位符
 
@@ -46,7 +51,7 @@ export const OPT_TRANS_OPENROUTER = "OpenRouter";
 export const OPT_TRANS_CUSTOMIZE = "Custom";
 
 // 内置支持的翻译引擎
-export const OPT_ALL_TYPES = [
+export const OPT_ALL_TRANS_TYPES = [
   OPT_TRANS_BUILTINAI,
   OPT_TRANS_GOOGLE,
   OPT_TRANS_GOOGLE_2,
@@ -82,7 +87,7 @@ export const OPT_LANGDETECTOR_MAP = new Set(OPT_LANGDETECTOR_ALL);
 // 翻译引擎特殊集合
 export const API_SPE_TYPES = {
   // 内置翻译
-  builtin: new Set(OPT_ALL_TYPES),
+  builtin: new Set(OPT_ALL_TRANS_TYPES),
   // 机器翻译
   machine: new Set([
     OPT_TRANS_MICROSOFT,
@@ -170,6 +175,7 @@ export const OPT_LANGS_TO = [
   ["cs", "Czech - Čeština"],
   ["da", "Danish - Dansk"],
   ["nl", "Dutch - Nederlands"],
+  ["fa", "Persian - فارسی"],
   ["fi", "Finnish - Suomi"],
   ["fr", "French - Français"],
   ["de", "German - Deutsch"],
@@ -311,14 +317,14 @@ export const OPT_LANGS_TO_SPEC = {
     ["id", "id"],
     ["vi", "vi"],
   ]),
-  [OPT_TRANS_OPENAI]: OPT_LANGS_SPEC_DEFAULT,
-  [OPT_TRANS_GEMINI]: OPT_LANGS_SPEC_DEFAULT,
-  [OPT_TRANS_GEMINI_2]: OPT_LANGS_SPEC_DEFAULT,
-  [OPT_TRANS_CLAUDE]: OPT_LANGS_SPEC_DEFAULT,
-  [OPT_TRANS_OLLAMA]: OPT_LANGS_SPEC_DEFAULT,
-  [OPT_TRANS_OPENROUTER]: OPT_LANGS_SPEC_DEFAULT,
-  [OPT_TRANS_CLOUDFLAREAI]: OPT_LANGS_SPEC_DEFAULT,
-  [OPT_TRANS_CUSTOMIZE]: OPT_LANGS_SPEC_DEFAULT,
+  [OPT_TRANS_OPENAI]: OPT_LANGS_SPEC_NAME,
+  [OPT_TRANS_GEMINI]: OPT_LANGS_SPEC_NAME,
+  [OPT_TRANS_GEMINI_2]: OPT_LANGS_SPEC_NAME,
+  [OPT_TRANS_CLAUDE]: OPT_LANGS_SPEC_NAME,
+  [OPT_TRANS_OLLAMA]: OPT_LANGS_SPEC_NAME,
+  [OPT_TRANS_OPENROUTER]: OPT_LANGS_SPEC_NAME,
+  [OPT_TRANS_CLOUDFLAREAI]: OPT_LANGS_SPEC_NAME,
+  [OPT_TRANS_CUSTOMIZE]: OPT_LANGS_SPEC_NAME,
 };
 
 const specToCode = (m) =>
@@ -339,6 +345,9 @@ export const OPT_LANGS_TO_CODE = {};
 Object.entries(OPT_LANGS_TO_SPEC).forEach(([t, m]) => {
   OPT_LANGS_TO_CODE[t] = specToCode(m);
 });
+
+export const defaultNobatchPrompt = `You are a professional, authentic machine translation engine.`;
+export const defaultNobatchUserPrompt = `Translate the following source text to ${INPUT_PLACE_TO}. Output translation directly without any additional text.\n\nSource Text: ${INPUT_PLACE_TEXT}\n\nTranslated Text:`;
 
 export const defaultSystemPrompt = `Act as a translation API. Output a single raw JSON object only. No extra text or fences.
 
@@ -430,6 +439,8 @@ const defaultApi = {
   model: "", // 模型名称
   systemPrompt: defaultSystemPrompt,
   subtitlePrompt: defaultSubtitlePrompt,
+  nobatchPrompt: defaultNobatchPrompt,
+  nobatchUserPrompt: defaultNobatchUserPrompt,
   userPrompt: "",
   tone: BUILTIN_STONES[0], // 翻译风格
   placeholder: BUILTIN_PLACEHOLDERS[0], // 占位符
@@ -441,7 +452,7 @@ const defaultApi = {
   resHook: "", // response 钩子函数
   fetchLimit: DEFAULT_FETCH_LIMIT, // 最大请求数量
   fetchInterval: DEFAULT_FETCH_INTERVAL, // 请求间隔时间
-  httpTimeout: DEFAULT_HTTP_TIMEOUT * 30, // 请求超时时间
+  httpTimeout: DEFAULT_HTTP_TIMEOUT * 3, // 请求超时时间
   batchInterval: DEFAULT_BATCH_INTERVAL, // 批处理请求间隔时间
   batchSize: DEFAULT_BATCH_SIZE, // 每次最多发送段落数量
   batchLength: DEFAULT_BATCH_LENGTH, // 每次发送最大文字数量
@@ -450,8 +461,8 @@ const defaultApi = {
   contextSize: DEFAULT_CONTEXT_SIZE, // 智能上下文保留会话数
   temperature: 0.0,
   maxTokens: 20480,
-  think: false,
-  thinkIgnore: "qwen3,deepseek-r1",
+  // think: false, // (OpenAI 兼容接口未支持，暂时移除)
+  // thinkIgnore: "qwen3,deepseek-r1", // (OpenAI 兼容接口未支持，暂时移除)
   isDisabled: false, // 是否不显示,
   region: "", // Azure 专用
 };
@@ -499,7 +510,6 @@ const defaultApiOpts = {
   [OPT_TRANS_DEEPLX]: {
     ...defaultApi,
     url: "http://localhost:1188/translate",
-    fetchLimit: 1,
   },
   [OPT_TRANS_NIUTRANS]: {
     ...defaultApi,
@@ -512,7 +522,6 @@ const defaultApiOpts = {
     url: "https://api.openai.com/v1/chat/completions",
     model: "gpt-4",
     useBatchFetch: true,
-    fetchLimit: 1,
   },
   [OPT_TRANS_GEMINI]: {
     ...defaultApi,
@@ -550,14 +559,13 @@ const defaultApiOpts = {
   },
   [OPT_TRANS_CUSTOMIZE]: {
     ...defaultApi,
-    url: "https://translate.googleapis.com/translate_a/single?client=gtx&dj=1&dt=t&ie=UTF-8&q={{text}}&sl=en&tl=zh-CN",
     reqHook: defaultRequestHook,
     resHook: defaultResponseHook,
   },
 };
 
 // 内置翻译接口列表（带参数）
-export const DEFAULT_API_LIST = OPT_ALL_TYPES.map((apiType) => ({
+export const DEFAULT_API_LIST = OPT_ALL_TRANS_TYPES.map((apiType) => ({
   ...defaultApiOpts[apiType],
   apiSlug: apiType,
   apiName: apiType,
@@ -565,4 +573,6 @@ export const DEFAULT_API_LIST = OPT_ALL_TYPES.map((apiType) => ({
 }));
 
 export const DEFAULT_API_TYPE = OPT_TRANS_MICROSOFT;
-export const DEFAULT_API_SETTING = DEFAULT_API_LIST[DEFAULT_API_TYPE];
+export const DEFAULT_API_SETTING = DEFAULT_API_LIST.find(
+  (a) => a.apiType === DEFAULT_API_TYPE
+);

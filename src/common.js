@@ -124,7 +124,16 @@ export async function run(isUserscript = false) {
     // 日志
     logger.setLevel(setting.logLevel);
 
-    const href = document.location.href;
+    // if (document?.documentElement?.tagName?.toUpperCase() !== "HTML") {
+    //   return;
+    // }
+    const contentType = document?.contentType?.toLowerCase() || "";
+    if (!contentType.includes("text") && !contentType.includes("html")) {
+      logger.info("Skip running in document content type: ", contentType);
+      return;
+    }
+
+    const href = document?.location?.href || "";
 
     // 设置页面
     if (

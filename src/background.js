@@ -15,8 +15,6 @@ import {
   MSG_UPDATE_CSP,
   MSG_BUILTINAI_DETECT,
   MSG_BUILTINAI_TRANSLATE,
-  DEFAULT_CSPLIST,
-  DEFAULT_ORILIST,
   CMD_TOGGLE_TRANSLATE,
   CMD_TOGGLE_STYLE,
   CMD_OPEN_OPTIONS,
@@ -33,11 +31,11 @@ import { sendTabMsg } from "./libs/msg";
 import { trySyncAllSubRules } from "./libs/subRules";
 import { saveRule } from "./libs/rules";
 import { getCurTabId } from "./libs/msg";
-import { injectInlineJs, injectInternalCss } from "./libs/injector";
+import { injectInlineJsBg, injectInternalCss } from "./libs/injector";
 import { kissLog, logger } from "./libs/log";
 import { chromeDetect, chromeTranslate } from "./libs/builtinAI";
 
-globalThis.ContextType = "BACKGROUND";
+globalThis.__KISS_CONTEXT__ = "background";
 
 const CSP_RULE_START_ID = 1;
 const ORI_RULE_START_ID = 10000;
@@ -193,19 +191,21 @@ async function registerMsgDisplayScript() {
 /**
  * 插件安装
  */
-browser.runtime.onInstalled.addListener(() => {
-  tryInitDefaultData();
+browser.runtime.onInstalled.addListener(async () => {
+  await tryInitDefaultData();
 
   //在thunderbird中注册脚本
   if (process.env.REACT_APP_CLIENT === CLIENT_THUNDERBIRD) {
     registerMsgDisplayScript();
   }
 
+  const { contextMenuType, csplist, orilist } = await getSettingWithDefault();
+
   // 右键菜单
-  addContextMenus();
+  addContextMenus(contextMenuType);
 
   // 禁用CSP
-  updateCspRules({ csplist: DEFAULT_CSPLIST, orilist: DEFAULT_ORILIST });
+  updateCspRules({ csplist, orilist });
 });
 
 /**
@@ -268,7 +268,7 @@ const messageHandlers = {
   [MSG_PUT_HTTPCACHE]: (args) => putHttpCache(args),
   [MSG_OPEN_OPTIONS]: () => browser.runtime.openOptionsPage(),
   [MSG_SAVE_RULE]: (args) => saveRule(args),
-  [MSG_INJECT_JS]: (args) => injectToCurrentTab(injectInlineJs, args),
+  [MSG_INJECT_JS]: (args) => injectToCurrentTab(injectInlineJsBg, args),
   [MSG_INJECT_CSS]: (args) => injectToCurrentTab(injectInternalCss, args),
   [MSG_UPDATE_CSP]: (args) => updateCspRules(args),
   [MSG_CONTEXT_MENUS]: (args) => addContextMenus(args),
@@ -285,20 +285,11 @@ const messageHandlers = {
  */
 browser.runtime.onMessage.addListener(async ({ action, args }) => {
   const handler = messageHandlers[action];
-
   if (!handler) {
-    const errorMessage = `Message action is unavailable: ${action}`;
-    kissLog("runtime onMessage", action, new Error(errorMessage));
-    return null;
+    throw new Error(`Message action is unavailable: ${action}`);
   }
 
-  try {
-    const result = await handler(args);
-    return result;
-  } catch (err) {
-    kissLog("runtime onMessage", action, err);
-    return null;
-  }
+  return handler(args);
 });
 
 /**

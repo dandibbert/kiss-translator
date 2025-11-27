@@ -15,7 +15,13 @@ export default class ShadowDomManager {
   _ReactComponent;
   _props;
 
-  constructor({ id, className = "", reactComponent, props = {} }) {
+  constructor({
+    id,
+    className = "",
+    reactComponent,
+    props = {},
+    rootElement = document.body,
+  }) {
     if (!id || !reactComponent) {
       throw new Error("ID and a React Component must be provided.");
     }
@@ -23,6 +29,7 @@ export default class ShadowDomManager {
     this._className = className;
     this._ReactComponent = reactComponent;
     this._props = props;
+    this._rootElement = rootElement;
   }
 
   get isVisible() {
@@ -92,22 +99,18 @@ export default class ShadowDomManager {
     if (this._className) {
       host.className = this._className;
     }
-    host.style.display = "none";
-    document.body.parentElement.appendChild(host);
+
+    this._rootElement.appendChild(host);
     this.#hostElement = host;
-
-    const shadowContainer = host.attachShadow({ mode: "closed" });
-    const emotionRoot = document.createElement("style");
+    const shadowContainer = host.attachShadow({ mode: "open" });
     const appRoot = document.createElement("div");
-    appRoot.className = `${this._id}_wrapper`;
-
-    shadowContainer.appendChild(emotionRoot);
+    appRoot.className = `${this._id}_wrapper notranslate`;
     shadowContainer.appendChild(appRoot);
 
     const cache = createCache({
       key: this._id,
       prepend: true,
-      container: emotionRoot,
+      container: shadowContainer,
     });
 
     const enhancedProps = {

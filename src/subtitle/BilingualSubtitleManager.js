@@ -1,5 +1,6 @@
 import { logger } from "../libs/log.js";
-import { truncateWords } from "../libs/utils.js";
+import { truncateWords, throttle } from "../libs/utils.js";
+import { apiTranslate } from "../apis/index.js";
 
 /**
  * @class BilingualSubtitleManager
@@ -8,29 +9,33 @@ import { truncateWords } from "../libs/utils.js";
 export class BilingualSubtitleManager {
   #videoEl;
   #formattedSubtitles = [];
-  #translationService;
   #captionWindowEl = null;
   #paperEl = null;
   #currentSubtitleIndex = -1;
-  #preTranslateSeconds = 100;
+  // #preTranslateSeconds = 90;
+  // #throttleSeconds = 30;
   #setting = {};
   #isAdPlaying = false;
+  #throttledTriggerTranslations;
 
   /**
    * @param {object} options
    * @param {HTMLVideoElement} options.videoEl - 页面上的 video 元素。
    * @param {Array<object>} options.formattedSubtitles - 已格式化好的字幕数组。
-   * @param {(text: string, toLang: string) => Promise<string>} options.translationService - 外部翻译函数。
    * @param {object} options.setting - 配置对象，如目标翻译语言。
    */
-  constructor({ videoEl, formattedSubtitles, translationService, setting }) {
+  constructor({ videoEl, formattedSubtitles, setting }) {
     this.#setting = setting;
     this.#videoEl = videoEl;
     this.#formattedSubtitles = formattedSubtitles;
-    this.#translationService = translationService;
 
     this.onTimeUpdate = this.onTimeUpdate.bind(this);
     this.onSeek = this.onSeek.bind(this);
+
+    this.#throttledTriggerTranslations = throttle(
+      this.#triggerTranslations.bind(this),
+      (setting.throttleTrans ?? 30) * 1000
+    );
   }
 
   /**
@@ -54,6 +59,7 @@ export class BilingualSubtitleManager {
   destroy() {
     logger.info("Bilingual Subtitle Manager: Destroying...");
     this.#removeEventListeners();
+    this.#throttledTriggerTranslations?.cancel();
     this.#captionWindowEl?.parentElement?.parentElement?.remove();
     this.#formattedSubtitles = [];
   }
@@ -128,15 +134,14 @@ export class BilingualSubtitleManager {
     let initialBottom;
     let dragElementHeight;
 
-    const onMouseDown = (e) => {
-      e.stopPropagation();
-      e.preventDefault();
+    const onDragStart = (e) => {
+      if (e.type === "mousedown" && e.button !== 0) return;
 
-      if (e.button !== 0) return;
+      e.preventDefault();
 
       isDragging = true;
       handleElement.style.cursor = "grabbing";
-      startY = e.clientY;
+      startY = e.type === "touchstart" ? e.touches[0].clientY : e.clientY;
 
       initialBottom =
         boundaryContainer.getBoundingClientRect().bottom -
@@ -144,17 +149,23 @@ export class BilingualSubtitleManager {
 
       dragElementHeight = dragElement.offsetHeight;
 
-      document.addEventListener("mousemove", onMouseMove, { capture: true });
-      document.addEventListener("mouseup", onMouseUp, { capture: true });
+      document.addEventListener("mousemove", onDragMove, { capture: true });
+      document.addEventListener("touchmove", onDragMove, {
+        capture: true,
+        passive: false,
+      });
+      document.addEventListener("mouseup", onDragEnd, { capture: true });
+      document.addEventListener("touchend", onDragEnd, { capture: true });
     };
 
-    const onMouseMove = (e) => {
+    const onDragMove = (e) => {
       if (!isDragging) return;
 
       e.preventDefault();
-      e.stopPropagation();
 
-      const deltaY = e.clientY - startY;
+      const currentY =
+        e.type === "touchmove" ? e.touches[0].clientY : e.clientY;
+      const deltaY = currentY - startY;
       let newBottom = initialBottom - deltaY;
 
       const containerHeight = boundaryContainer.clientHeight;
@@ -167,17 +178,18 @@ export class BilingualSubtitleManager {
       dragElement.style.bottom = `${newBottom}px`;
     };
 
-    const onMouseUp = (e) => {
+    const onDragEnd = (e) => {
       if (!isDragging) return;
 
       e.preventDefault();
-      e.stopPropagation();
 
       isDragging = false;
       handleElement.style.cursor = "grab";
 
-      document.removeEventListener("mousemove", onMouseMove, { capture: true });
-      document.removeEventListener("mouseup", onMouseUp, { capture: true });
+      document.removeEventListener("mousemove", onDragMove, { capture: true });
+      document.removeEventListener("touchmove", onDragMove, { capture: true });
+      document.removeEventListener("mouseup", onDragEnd, { capture: true });
+      document.removeEventListener("touchend", onDragEnd, { capture: true });
 
       const finalBottomPx = dragElement.style.bottom;
       setTimeout(() => {
@@ -185,7 +197,10 @@ export class BilingualSubtitleManager {
       }, 50);
     };
 
-    handleElement.addEventListener("mousedown", onMouseDown);
+    handleElement.addEventListener("mousedown", onDragStart);
+    handleElement.addEventListener("touchstart", onDragStart, {
+      passive: false,
+    });
   }
 
   /**
@@ -218,7 +233,7 @@ export class BilingualSubtitleManager {
       this.#updateCaptionDisplay(subtitle);
     }
 
-    this.#triggerTranslations(currentTimeMs);
+    this.#throttledTriggerTranslations(currentTimeMs);
   }
 
   /**
@@ -226,6 +241,7 @@ export class BilingualSubtitleManager {
    */
   onSeek() {
     this.#currentSubtitleIndex = -1;
+    this.#throttledTriggerTranslations.cancel();
     this.onTimeUpdate();
   }
 
@@ -278,7 +294,8 @@ export class BilingualSubtitleManager {
    * @param {number} currentTimeMs
    */
   #triggerTranslations(currentTimeMs) {
-    const lookAheadMs = this.#preTranslateSeconds * 1000;
+    const { preTrans = 90 } = this.#setting;
+    const lookAheadMs = preTrans * 1000;
 
     for (const sub of this.#formattedSubtitles) {
       const isCurrent = sub.start <= currentTimeMs && sub.end >= currentTimeMs;
@@ -300,13 +317,13 @@ export class BilingualSubtitleManager {
     subtitle.isTranslating = true;
     try {
       const { fromLang, toLang, apiSetting } = this.#setting;
-      const [translatedText] = await this.#translationService({
+      const { trText } = await apiTranslate({
         text: subtitle.text,
         fromLang,
         toLang,
         apiSetting,
       });
-      subtitle.translation = translatedText;
+      subtitle.translation = trText;
     } catch (error) {
       logger.info("Translation failed for:", subtitle.text, error);
       subtitle.translation = "[Translation failed]";
@@ -339,5 +356,9 @@ export class BilingualSubtitleManager {
     this.#formattedSubtitles.sort((a, b) => a.start - b.start);
     this.#currentSubtitleIndex = -1;
     this.onTimeUpdate();
+  }
+
+  updateSetting(obj) {
+    this.#setting = { ...this.#setting, ...obj };
   }
 }

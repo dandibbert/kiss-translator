@@ -95,7 +95,7 @@ export default function Settings() {
     newlineLength = TRANS_NEWLINE_LENGTH,
     httpTimeout = DEFAULT_HTTP_TIMEOUT,
     contextMenuType = 1,
-    touchTranslate = 2,
+    touchModes = [2],
     blacklist = DEFAULT_BLACKLIST.join(",\n"),
     csplist = DEFAULT_CSPLIST.join(",\n"),
     orilist = DEFAULT_ORILIST.join(",\n"),
@@ -106,6 +106,7 @@ export default function Settings() {
     skipLangs = [],
     // detectRemote = true,
     transAllnow = false,
+    rootMargin = 500,
   } = setting;
   const { isHide = false, fabClickAction = 0 } = fab || {};
 
@@ -261,7 +262,7 @@ export default function Settings() {
                 name="transInterval"
                 value={transInterval}
                 onChange={handleChange}
-                min={10}
+                min={1}
                 max={2000}
               />
             </Grid>
@@ -274,8 +275,8 @@ export default function Settings() {
                 name="httpTimeout"
                 value={httpTimeout}
                 onChange={handleChange}
-                min={5000}
-                max={60000}
+                min={1000}
+                max={600000}
               />
             </Grid>
             <Grid item xs={12} sm={12} md={6} lg={3}>
@@ -283,10 +284,13 @@ export default function Settings() {
                 select
                 fullWidth
                 size="small"
-                name="touchTranslate"
-                value={touchTranslate}
+                name="touchModes"
+                value={touchModes}
                 label={i18n("touch_translate_shortcut")}
                 onChange={handleChange}
+                SelectProps={{
+                  multiple: true,
+                }}
               >
                 {[0, 2, 3, 4, 5, 6, 7].map((item) => (
                   <MenuItem key={item} value={item}>
@@ -313,34 +317,6 @@ export default function Settings() {
             <Grid item xs={12} sm={12} md={6} lg={3}>
               <TextField
                 select
-                size="small"
-                fullWidth
-                name="transAllnow"
-                value={transAllnow}
-                label={i18n("trigger_mode")}
-                onChange={handleChange}
-              >
-                <MenuItem value={false}>{i18n("mk_pagescroll")}</MenuItem>
-                <MenuItem value={true}>{i18n("mk_pageopen")}</MenuItem>
-              </TextField>
-            </Grid>
-            {/* <Grid item xs={12} sm={12} md={6} lg={3}>
-              <TextField
-                select
-                size="small"
-                fullWidth
-                name="detectRemote"
-                value={detectRemote}
-                label={i18n("detect_lang_remote")}
-                onChange={handleChange}
-              >
-                <MenuItem value={true}>{i18n("enable")}</MenuItem>
-                <MenuItem value={false}>{i18n("disable")}</MenuItem>
-              </TextField>
-            </Grid> */}
-            <Grid item xs={12} sm={12} md={6} lg={3}>
-              <TextField
-                select
                 fullWidth
                 size="small"
                 name="langDetector"
@@ -356,6 +332,47 @@ export default function Settings() {
                 ))}
               </TextField>
             </Grid>
+            <Grid item xs={12} sm={12} md={6} lg={3}>
+              <TextField
+                select
+                size="small"
+                fullWidth
+                name="transAllnow"
+                value={transAllnow}
+                label={i18n("trigger_mode")}
+                onChange={handleChange}
+              >
+                <MenuItem value={false}>{i18n("mk_pagescroll")}</MenuItem>
+                <MenuItem value={true}>{i18n("mk_pageopen")}</MenuItem>
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={12} md={6} lg={3}>
+              <ValidationInput
+                fullWidth
+                size="small"
+                label={i18n("pagescroll_root_margin")}
+                type="number"
+                name="rootMargin"
+                value={rootMargin}
+                onChange={handleChange}
+                min={0}
+                max={10000}
+              />
+            </Grid>
+            {/* <Grid item xs={12} sm={12} md={6} lg={3}>
+              <TextField
+                select
+                size="small"
+                fullWidth
+                name="detectRemote"
+                value={detectRemote}
+                label={i18n("detect_lang_remote")}
+                onChange={handleChange}
+              >
+                <MenuItem value={true}>{i18n("enable")}</MenuItem>
+                <MenuItem value={false}>{i18n("disable")}</MenuItem>
+              </TextField>
+            </Grid> */}
             <Grid item xs={12} sm={12} md={6} lg={3}>
               <TextField
                 select

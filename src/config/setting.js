@@ -6,6 +6,7 @@ import {
   OPT_TRANS_MICROSOFT,
   DEFAULT_API_LIST,
 } from "./api";
+import { DEFAULT_CUSTOM_STYLES } from "./styles";
 
 // 默认快捷键
 export const OPT_SHORTCUT_TRANSLATE = "toggleTranslate";
@@ -88,6 +89,7 @@ export const DEFAULT_TRANBOX_SETTING = {
   hideClickAway: false, // 是否点击外部关闭弹窗
   simpleStyle: false, // 是否简洁界面
   followSelection: false, // 翻译框是否跟随选中文本
+  autoHeight: false, // 自适应高度
   triggerMode: OPT_TRANBOX_TRIGGER_CLICK, // 触发翻译方式
   // extStyles: "", // 附加样式
   enDict: OPT_DICT_BING, // 英文词典
@@ -101,18 +103,21 @@ line-height: 1.3;
 text-shadow: 1px 1px 2px black;
 display: inline-block`;
 
-const SUBTITLE_ORIGIN_STYLE = `font-size: clamp(1.5rem, 3cqw, 3rem);`;
+const SUBTITLE_ORIGIN_STYLE = `font-size: clamp(1rem, 2cqw, 3rem);`;
 
-const SUBTITLE_TRANSLATION_STYLE = `font-size: clamp(1.5rem, 3cqw, 3rem);`;
+const SUBTITLE_TRANSLATION_STYLE = `font-size: clamp(1rem, 2cqw, 3rem);`;
 
 export const DEFAULT_SUBTITLE_SETTING = {
   enabled: true, // 是否开启
   apiSlug: OPT_TRANS_MICROSOFT,
   segSlug: "-", // AI智能断句
   chunkLength: 1000, // AI处理切割长度
+  preTrans: 90, // 提前翻译时长
+  throttleTrans: 30, // 节流翻译间隔
   // fromLang: "en",
   toLang: "zh-CN",
   isBilingual: true, // 是否双语显示
+  skipAd: false, // 是否快进广告
   windowStyle: SUBTITLE_WINDOW_STYLE, // 背景样式
   originStyle: SUBTITLE_ORIGIN_STYLE, // 原文样式
   translationStyle: SUBTITLE_TRANSLATION_STYLE, // 译文样式
@@ -167,7 +172,8 @@ export const DEFAULT_SETTING = {
   shortcuts: DEFAULT_SHORTCUTS, // 快捷键
   inputRule: DEFAULT_INPUT_RULE, // 输入框设置
   tranboxSetting: DEFAULT_TRANBOX_SETTING, // 划词翻译设置
-  touchTranslate: 2, // 触屏翻译 {5:单指双击，6:单指三击，7:双指双击}
+  // touchTranslate: 2, // 触屏翻译 {5:单指双击，6:单指三击，7:双指双击} (作废)
+  touchModes: [2], // 触屏翻译 {5:单指双击，6:单指三击，7:双指双击} (多选)
   blacklist: DEFAULT_BLACKLIST.join(",\n"), // 禁用翻译名单
   csplist: DEFAULT_CSPLIST.join(",\n"), // 禁用CSP名单
   orilist: DEFAULT_ORILIST.join(",\n"), // 禁用CSP名单
@@ -180,4 +186,6 @@ export const DEFAULT_SETTING = {
   transAllnow: false, // 是否立即全部翻译
   subtitleSetting: DEFAULT_SUBTITLE_SETTING, // 字幕设置
   logLevel: LogLevel.INFO.value, // 日志级别
+  rootMargin: 500, // 提前触发翻译
+  customStyles: DEFAULT_CUSTOM_STYLES, // 自定义样式列表
 };

@@ -10,7 +10,7 @@ import { useSetting } from "./Setting";
  * @param {*} param0
  * @returns
  */
-export default function Theme({ children, options, styles }) {
+export default function Theme({ children, options = {}, styles = {} }) {
   const { darkMode } = useDarkMode();
   const [systemMode, setSystemMode] = useState(THEME_LIGHT);
   const { setting } = useSetting();
@@ -32,11 +32,8 @@ export default function Theme({ children, options, styles }) {
   const theme = useMemo(() => {
     let htmlFontSize = 16;
     try {
-      const s = window.getComputedStyle(document.body.parentNode).fontSize;
-      const fontSize = parseInt(s.replace("px", ""));
-      if (fontSize > 0 && fontSize < 1000) {
-        htmlFontSize = fontSize;
-      }
+      const s = window.getComputedStyle(document.documentElement).fontSize;
+      htmlFontSize = parseInt(s.replace("px", ""));
     } catch (err) {
       //
     }

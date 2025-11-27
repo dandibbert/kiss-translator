@@ -115,7 +115,15 @@ export default function TranBox({
   text,
   setText,
   setShowBox,
-  tranboxSetting: { enDict, enSug, apiSlugs, fromLang, toLang, toLang2 },
+  tranboxSetting: {
+    enDict,
+    enSug,
+    apiSlugs,
+    fromLang,
+    toLang,
+    toLang2,
+    autoHeight,
+  },
   transApis,
   boxSize,
   setBoxSize,
@@ -133,7 +141,7 @@ export default function TranBox({
   const [mouseHover, setMouseHover] = useState(false);
   // todo: 这里的 SettingProvider 不应和 background 的共用
   return (
-    <SettingProvider>
+    <SettingProvider context="tranbox">
       <ThemeProvider styles={extStyles}>
         {showBox && (
           <DraggableResizable
@@ -141,6 +149,7 @@ export default function TranBox({
             size={boxSize}
             setSize={setBoxSize}
             setPosition={setBoxPosition}
+            autoHeight={autoHeight}
             header={
               <Header
                 setShowBox={setShowBox}

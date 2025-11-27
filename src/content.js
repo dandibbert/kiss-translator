@@ -1,5 +1,5 @@
 import { run } from "./common";
 
-if (document.documentElement && document.documentElement.tagName === "HTML") {
-  run();
-}
+globalThis.__KISS_CONTEXT__ = "content";
+
+run();
